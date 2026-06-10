@@ -1,0 +1,105 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "🐳 Docker: Start All Services",
+      "type": "shell",
+      "command": "make up",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "new" }
+    },
+    {
+      "label": "🐳 Docker: Start Monitoring Stack",
+      "type": "shell",
+      "command": "make up-monitoring",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "new" }
+    },
+    {
+      "label": "🐳 Docker: Stop All",
+      "type": "shell",
+      "command": "make down",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "📦 Backend: Install Dependencies",
+      "type": "shell",
+      "command": "cd backend && python -m venv .venv && .venv/bin/pip install -e '.[dev]'",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "new" }
+    },
+    {
+      "label": "📦 Frontend: Install Dependencies",
+      "type": "shell",
+      "command": "cd frontend && npm install",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "new" }
+    },
+    {
+      "label": "📦 Agent: Install Dependencies",
+      "type": "shell",
+      "command": "cd monitoring-agent && python -m venv .venv && .venv/bin/pip install -e '.[dev]'",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "new" }
+    },
+    {
+      "label": "🗄 DB: Run Migrations",
+      "type": "shell",
+      "command": "make migrate",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "🌱 DB: Seed Demo Data",
+      "type": "shell",
+      "command": "make seed",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "✅ Test: Unit",
+      "type": "shell",
+      "command": "make test-unit",
+      "group": { "kind": "test", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "new" }
+    },
+    {
+      "label": "✅ Test: Integration",
+      "type": "shell",
+      "command": "make test-integration",
+      "group": "test",
+      "presentation": { "reveal": "always", "panel": "new" }
+    },
+    {
+      "label": "🔍 Lint: Ruff",
+      "type": "shell",
+      "command": "make lint",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "🔠 Typecheck: MyPy",
+      "type": "shell",
+      "command": "make typecheck",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "📋 Logs: Backend API",
+      "type": "shell",
+      "command": "docker compose logs -f backend",
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "new" },
+      "isBackground": true
+    },
+    {
+      "label": "📋 Logs: Monitoring Agent",
+      "type": "shell",
+      "command": "docker compose logs -f monitoring-agent",
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "new" },
+      "isBackground": true
+    }
+  ]
+}

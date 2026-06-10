@@ -1,0 +1,82 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "🚀 Backend API (FastAPI)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"],
+      "cwd": "${workspaceFolder}/backend",
+      "envFile": "${workspaceFolder}/.env",
+      "python": "${workspaceFolder}/backend/.venv/bin/python",
+      "justMyCode": false
+    },
+    {
+      "name": "🔍 Monitoring Agent",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "agent.main",
+      "cwd": "${workspaceFolder}/monitoring-agent",
+      "envFile": "${workspaceFolder}/.env",
+      "python": "${workspaceFolder}/monitoring-agent/.venv/bin/python",
+      "justMyCode": false
+    },
+    {
+      "name": "⚡ Celery Worker",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "celery",
+      "args": [
+        "-A", "app.worker.celery_app",
+        "worker",
+        "--loglevel=info",
+        "--concurrency=2"
+      ],
+      "cwd": "${workspaceFolder}/backend",
+      "envFile": "${workspaceFolder}/.env",
+      "python": "${workspaceFolder}/backend/.venv/bin/python"
+    },
+    {
+      "name": "🧪 Pytest — Unit Tests",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["tests/unit", "-v", "--tb=short"],
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "python": "${workspaceFolder}/backend/.venv/bin/python",
+      "justMyCode": false
+    },
+    {
+      "name": "🧪 Pytest — Integration Tests",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["tests/integration", "-v", "--tb=short"],
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "python": "${workspaceFolder}/backend/.venv/bin/python",
+      "justMyCode": false
+    },
+    {
+      "name": "🔧 Alembic Migrate",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "alembic",
+      "args": ["upgrade", "head"],
+      "cwd": "${workspaceFolder}/backend",
+      "envFile": "${workspaceFolder}/.env",
+      "python": "${workspaceFolder}/backend/.venv/bin/python"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "🏗 Full Dev Stack",
+      "configurations": [
+        "🚀 Backend API (FastAPI)",
+        "🔍 Monitoring Agent"
+      ]
+    }
+  ]
+}
