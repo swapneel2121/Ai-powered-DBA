@@ -1,0 +1,23 @@
+# Python
+.venv/
+**/__pycache__/
+**/*.pyc
+.mypy_cache/
+.pytest_cache/
+typestubs/
+
+# Node / frontend
+node_modules/
+**/node_modules/
+frontend/dist/
+frontend/dist*/
+
+# VCS / IDE / misc
+.git/
+.gitignore
+.vscode/
+*.log
+
+# Build outputs
+dist/
+build/

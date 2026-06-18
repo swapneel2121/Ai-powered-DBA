@@ -1,0 +1,25 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic",
+  "useLibraryCodeForTypes": true,
+
+  // typestubsPath  → used for installed packages that have no py.typed marker
+  //                  (asyncpg, aiomysql, structlog, etc.)
+  // stubPath       → used for packages NOT installed at all
+  // Both are needed; they serve different lookup scenarios.
+  "typestubsPath": "typestubs",
+  "stubPath": "stubs",
+
+  "reportMissingTypeStubs": "none",
+  "reportMissingModuleSource": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownParameterType": "none",
+  "reportAttributeAccessIssue": "warning",
+  "reportMissingImports": "warning",
+
+  "exclude": ["**/__pycache__", "**/.venv", "**/node_modules", "**/dist"]
+}

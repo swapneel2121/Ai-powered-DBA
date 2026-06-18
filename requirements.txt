@@ -1,0 +1,49 @@
+# Core
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+asyncpg==0.29.0
+aiomysql==0.2.0
+sqlalchemy[asyncio]==2.0.30
+alembic==1.13.1
+pydantic==2.7.4
+pydantic-settings==2.3.4
+
+# Agent & Analysis
+xgboost==2.0.3
+scikit-learn==1.5.0
+numpy==1.26.4
+pandas==2.2.2
+
+# LLM
+httpx==0.27.0
+groq==0.9.0
+tiktoken==0.7.0
+
+# Forecasting
+prophet==1.1.5
+# neuralprophet is optional and NOT imported by the code (Prophet is used,
+# with a linear-regression fallback). The previously pinned 0.9.0 does not
+# exist on PyPI and broke the Docker build. Re-enable with a valid version
+# (e.g. neuralprophet==0.8.0) only if you wire NeuralProphet into forecasting.py.
+# neuralprophet==0.8.0
+
+# Task queue
+celery==5.4.0
+redis==5.0.6
+
+# Workflow state machine
+transitions==0.9.0
+
+# Observability
+structlog==24.1.0
+prometheus-client==0.20.0
+opentelemetry-sdk==1.24.0
+opentelemetry-exporter-otlp==1.24.0
+opentelemetry-instrumentation-fastapi==0.45b0
+
+# Utilities
+python-dotenv==1.0.1
+aiofiles==23.2.1
+docker==7.1.0
+tenacity==8.3.0
+orjson==3.10.3

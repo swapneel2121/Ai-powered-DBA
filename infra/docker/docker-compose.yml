@@ -1,0 +1,189 @@
+# Autonomous DBA — full local stack.
+#
+# Run from this directory:
+#     docker compose up --build
+#
+# All relative paths below are resolved relative to THIS file's location
+# (infra/docker/). The repo root is therefore ../.. and the frontend lives
+# at ../../frontend.
+
+services:
+
+  # ── TimescaleDB (agent's metric store) ──────────────────────────────
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: dba-timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: dba_metrics
+    ports:
+      - "5433:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      retries: 5
+
+  # ── Redis (Celery broker + LLM response cache) ───────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: dba-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 3
+
+  # ── Ollama (local LLM server) ────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: dba-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    # Uncomment for GPU support:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── DBA Backend API ──────────────────────────────────────────────────
+  backend:
+    build:
+      context: ../..                         # repo root
+      dockerfile: infra/docker/Dockerfile.backend
+    container_name: dba-backend
+    restart: unless-stopped
+    env_file:
+      - path: ../../.env                     # optional: created via `cp .env.example .env`
+        required: false
+    environment:
+      TIMESCALE_URL: postgresql://postgres:password@timescaledb:5432/dba_metrics
+      REDIS_URL: redis://redis:6379/0
+      OLLAMA_BASE_URL: http://ollama:11434
+      # Low threshold so the bundled sample workload (full scans over 100k rows)
+      # registers in the Slow Queries tab. Raise for real production databases.
+      SLOW_QUERY_THRESHOLD_MS: "1"
+    ports:
+      - "8000:8000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock   # For shadow DB containers
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      retries: 3
+
+  # ── React Frontend ───────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ../..                         # repo root (needs frontend/ + infra/docker/nginx.conf)
+      dockerfile: infra/docker/Dockerfile.frontend
+    container_name: dba-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+  # ── Prometheus ───────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: dba-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'
+
+  # ── Grafana ──────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: dba-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+  # ── MinIO (cold metric archival) ─────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: dba-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+  # ── Sample PostgreSQL target (for local testing) ─────────────────────
+  sample-postgres:
+    image: postgres:16-alpine
+    container_name: dba-sample-postgres
+    restart: unless-stopped
+    # Preload pg_stat_statements so the agent can collect per-query stats.
+    # CREATE EXTENSION alone is not enough — the library must be loaded at
+    # server start via shared_preload_libraries.
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "pg_stat_statements.track=all"
+      - "-c"
+      - "pg_stat_statements.max=10000"
+    environment:
+      POSTGRES_USER: dba_agent
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: sampledb
+    ports:
+      - "5432:5432"
+    volumes:
+      - sample_pg_data:/var/lib/postgresql/data
+      - ./sample_pg_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dba_agent -d sampledb"]
+      interval: 10s
+      retries: 5
+
+volumes:
+  timescale_data:
+  redis_data:
+  ollama_models:
+  prometheus_data:
+  grafana_data:
+  minio_data:
+  sample_pg_data:

@@ -1,6 +1,10 @@
 {
+  // ════════════════════════════════════════════════════════════════════
+  // Autonomous DBA Agent — VS Code Workspace Settings
+  // ════════════════════════════════════════════════════════════════════
+
+  // ── Editor (global defaults) ─────────────────────────────────────────
   "editor.formatOnSave": true,
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.codeActionsOnSave": {
     "source.organizeImports": "explicit",
     "source.fixAll.eslint": "explicit"
@@ -9,61 +13,207 @@
   "editor.tabSize": 2,
   "editor.insertSpaces": true,
 
-  // ── Python ──────────────────────────────────────────────
+  // ── Tailwind CSS ─────────────────────────────────────────────────────
+  // FIX [11]: Silence VS Code's built-in CSS linter for @tailwind / @apply.
+  //           Without these, index.css shows 200+ "Unknown at rule" errors
+  //           even though Vite/PostCSS processes Tailwind correctly.
+  "css.validate": false,
+  "scss.validate": false,
+  "less.validate": false,
+  // FIX [12]: Tell the Tailwind IntelliSense extension where the config lives
+  //           (required when the CSS file is inside frontend/src/)
+  "tailwindCSS.rootFontSize": 16,
+  "tailwindCSS.includeLanguages": {
+    "typescript": "javascript",
+    "typescriptreact": "javascript"
+  },
+  "editor.quickSuggestions": {
+    "strings": true
+  },
+
+  // ── Python ──────────────────────────────────────────────────────────
   "[python]": {
-    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.defaultFormatter": "astral-sh.ruff",
     "editor.formatOnSave": true,
     "editor.tabSize": 4
   },
-  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+
+  // FIX [13]: Windows .venv path — use forward slashes; VS Code resolves them
+  //           correctly on Windows and they are cross-platform safe.
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+
   "python.analysis.typeCheckingMode": "basic",
   "python.analysis.autoImportCompletions": true,
-  "ruff.lint.args": ["--config=${workspaceFolder}/backend/pyproject.toml"],
-  "mypy-type-checker.args": ["--config-file=${workspaceFolder}/backend/pyproject.toml"],
+  "python.analysis.stubPath": "stubs",
+  "python.analysis.extraPaths": ["${workspaceFolder}"],
 
-  // ── TypeScript / React ────────────────────────────────────
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportMissingTypeStubs": "none",
+    "reportMissingModuleSource": "none",
+    "reportUnknownMemberType": "none",
+    "reportUnknownVariableType": "none",
+    "reportUnknownArgumentType": "none",
+    "reportUnknownParameterType": "none",
+    "reportAttributeAccessIssue": "warning"
+  },
+
+  "python.analysis.useLibraryCodeForTypes": true,
+  "python.analysis.ignore": [],
+
+  // FIX [14]: ruff.lint.args is only valid for the legacy pylsp-ruff extension.
+  //           The official astral-sh.ruff extension uses ruff.configuration instead.
+  "ruff.configuration": "${workspaceFolder}/backend/pyproject.toml",
+
+  "mypy-type-checker.args": [
+    "--config-file=${workspaceFolder}/backend/pyproject.toml"
+  ],
+
+  // ── TypeScript / React ───────────────────────────────────────────────
   "[typescript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   "[typescriptreact]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
-  "typescript.tsdk": "frontend/node_modules/typescript/lib",
-  "eslint.workingDirectories": ["frontend"],
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
 
-  // ── Docker ───────────────────────────────────────────────
+  // FIX [15]: Also suppress Tailwind warnings in CSS language overrides
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+
+  "typescript.tsdk": "frontend/node_modules/typescript/lib",
+
+  "eslint.workingDirectory": [
+    {
+      "directory": "frontend",
+      "changeProcessCWD": true
+    }
+  ],
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact"
+  ],
+
+  // ── Docker ───────────────────────────────────────────────────────────
   "docker.showStartPage": false,
 
-  // ── Files ────────────────────────────────────────────────
+  // ── File explorer / watcher exclusions ──────────────────────────────
   "files.exclude": {
     "**/__pycache__": true,
     "**/.mypy_cache": true,
     "**/.ruff_cache": true,
     "**/node_modules": true,
-    "**/.venv": true
+    "**/.venv": true,
+    "**/*.pyc": true,
+    "**/.pytest_cache": true
   },
   "files.watcherExclude": {
     "**/node_modules/**": true,
     "**/.venv/**": true,
     "**/pgdata/**": true,
-    "**/mysqldata/**": true
+    "**/mysqldata/**": true,
+    "**/__pycache__/**": true,
+    "**/.mypy_cache/**": true
   },
   "search.exclude": {
-    "**/node_modules": true,
-    "**/.venv": true,
-    "**/dist": true
+    "**/dist": true,
+    "**/build": true,
+    "**/*.min.js": true,
+    "**/coverage": true
   },
 
-  // ── Testing ──────────────────────────────────────────────
+  // ── Testing ──────────────────────────────────────────────────────────
   "python.testing.pytestEnabled": true,
   "python.testing.pytestArgs": ["tests/"],
-  "python.testing.cwd": "${workspaceFolder}",
+  // FIX [16]: cwd must be an absolute path via variable — a bare string like
+  //           "tests/" silently fails and pytest can't find conftest.py.
+  "python.testing.cwd": "${workspaceFolder}/backend",
 
-  // ── Git ──────────────────────────────────────────────────
+  // ── Git ──────────────────────────────────────────────────────────────
   "git.autofetch": true,
   "git.confirmSync": false,
 
-  // ── Terminal ─────────────────────────────────────────────
+  // ── Terminal ─────────────────────────────────────────────────────────
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
   "terminal.integrated.defaultProfile.linux": "bash",
-  "terminal.integrated.cwd": "${workspaceFolder}"
+  "terminal.integrated.defaultProfile.osx": "zsh",
+  "terminal.integrated.cwd": "${workspaceFolder}",
+  "terminal.integrated.env.windows": {
+    "PYTHONPATH": "${workspaceFolder}"
+  },
+  "terminal.integrated.env.linux": {
+    "PYTHONPATH": "${workspaceFolder}"
+  },
+  // FIX [17]: Added macOS env to match Windows/Linux — was missing entirely
+  "terminal.integrated.env.osx": {
+    "PYTHONPATH": "${workspaceFolder}"
+  },
+
+  // ── Spell checker ────────────────────────────────────────────────────
+  "cSpell.words": [
+    "aiofiles",
+    "aiomysql",
+    "asgi",
+    "asyncio",
+    "asyncpg",
+    "autofetch",
+    "autoprefixer",
+    "bgwriter",
+    "blks",
+    "charliermarsh",
+    "clsx",
+    "coro",
+    "datname",
+    "deepseek",
+    "dotenv",
+    "esbenp",
+    "fastapi",
+    "fetchrow",
+    "fetchval",
+    "Fingerprinter",
+    "groq",
+    "httpx",
+    "indexrelname",
+    "Initialised",
+    "initialising",
+    "jetbrains",
+    "keepalive",
+    "lucide",
+    "minioadmin",
+    "mlogloss",
+    "mypy",
+    "numpy",
+    "ollama",
+    "orjson",
+    "pgdata",
+    "postcss",
+    "pvalue",
+    "pydantic",
+    "pylance",
+    "pytest",
+    "recharts",
+    "redoc",
+    "schemaname",
+    "scikit",
+    "sqlalchemy",
+    "structlog",
+    "tailwindcss",
+    "tanstack",
+    "tiktoken",
+    "timescaledb",
+    "ttest",
+    "uvicorn",
+    "venv",
+    "xact",
+    "xacts",
+    "xgboost"
+  ]
 }

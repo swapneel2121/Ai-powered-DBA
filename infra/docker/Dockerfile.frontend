@@ -1,0 +1,20 @@
+# Build context = repo root (see docker-compose.yml).
+# This lets us copy both the frontend source and infra/docker/nginx.conf,
+# which live in different directories.
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Install deps first for better layer caching
+COPY frontend/package*.json ./
+RUN npm ci
+
+# Build the app
+COPY frontend/ ./
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY infra/docker/nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
