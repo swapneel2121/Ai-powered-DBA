@@ -231,6 +231,49 @@ class PostgresCollector:
                 log.warning("explain_failed", db_id=self.target.id, error=str(e))
                 return f"EXPLAIN failed: {e}"
 
+    async def get_schema_summary(self, max_tables: int = 40) -> str:
+        """
+        Compact 'table(col type, ...)' summary of the public schema, used to
+        ground the LLM when translating English questions into SQL.
+        """
+        pool = self._ensure_connected()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT table_name, column_name, data_type
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                ORDER BY table_name, ordinal_position
+                """
+            )
+        tables: Dict[str, List[str]] = {}
+        for r in rows:
+            tables.setdefault(r["table_name"], []).append(
+                f"{r['column_name']} {r['data_type']}"
+            )
+        lines = [
+            f"{t}({', '.join(cols)})"
+            for t, cols in list(tables.items())[:max_tables]
+        ]
+        return "\n".join(lines)
+
+    async def run_readonly_query(
+        self, sql: str, limit: int = 100, timeout_s: float = 8.0
+    ) -> List[Dict]:
+        """
+        Execute a single read-only SELECT against the monitored database and
+        return rows. Safety: a READ ONLY transaction (Postgres rejects any
+        write/DDL) plus a statement timeout to bound expensive scans.
+        """
+        pool = self._ensure_connected()
+        async with pool.acquire() as conn:
+            async with conn.transaction(readonly=True):
+                await conn.execute(
+                    f"SET LOCAL statement_timeout = {int(timeout_s * 1000)}"
+                )
+                rows = await conn.fetch(sql)
+                return [dict(r) for r in rows[:limit]]
+
 
 class _RollbackSentinel(Exception):
     """Private sentinel used to force a transaction rollback after EXPLAIN ANALYZE."""
@@ -396,25 +439,35 @@ class MonitoringAgent:
         whether to restart or shut down.
         """
         targets = [DatabaseTarget.from_url(url) for url in settings.monitored_dbs]
+        self._running = True
 
-        for target in targets:
-            try:
-                collector: AnyCollector
-                if target.db_type == "postgresql":
-                    collector = PostgresCollector(target)
-                else:
-                    collector = MySQLCollector(target)
-                await collector.connect()
-                self._collectors[target.id] = collector
-                log.info("collector_started", db_id=target.id, db_type=target.db_type)
-            except Exception as e:
-                log.error("collector_connect_failed", db_id=target.id, error=str(e))
+        # Keep trying to connect collectors until at least one is available.
+        # A monitored database may not be ready when the agent boots (e.g. it is
+        # still seeding) — previously the agent gave up permanently here, leaving
+        # the dashboard empty forever. Now it retries until a collector connects.
+        retry_delay = 10
+        while self._running and not self._collectors:
+            for target in targets:
+                if target.id in self._collectors:
+                    continue
+                try:
+                    collector: AnyCollector
+                    if target.db_type == "postgresql":
+                        collector = PostgresCollector(target)
+                    else:
+                        collector = MySQLCollector(target)
+                    await collector.connect()
+                    self._collectors[target.id] = collector
+                    log.info("collector_started", db_id=target.id, db_type=target.db_type)
+                except Exception as e:
+                    log.warning("collector_connect_failed_will_retry", db_id=target.id, error=str(e)[:160])
+            if not self._collectors:
+                log.warning("no_collectors_available_retrying", retry_in_s=retry_delay)
+                await asyncio.sleep(retry_delay)
 
         if not self._collectors:
-            log.error("no_collectors_available")
-            return
+            return  # stop() was called before any collector connected
 
-        self._running = True
         try:
             await asyncio.gather(
                 self._critical_loop(),
@@ -539,6 +592,11 @@ class MonitoringAgent:
             fingerprint = self.fingerprinter.fingerprint(sql)
             normalized = self.fingerprinter.normalize(sql)
             access_pattern = self.fingerprinter.classify_pattern(normalized)
+
+            # Security scan: flag SQL-injection / privilege-escalation / sensitive
+            # full-scan patterns in observed queries and dispatch alerts.
+            for event in self.anomaly_detector.check_query_security(db_id, sql):
+                await self.notifier.send_alert(event)
 
             await self.metric_store.upsert_query_snapshot(
                 {

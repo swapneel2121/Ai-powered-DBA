@@ -21,7 +21,7 @@ from backend.agent.anomaly import AnomalyDetector
 from backend.agent.fingerprint import QueryFingerprinter
 from backend.agent.monitor import MonitoringAgent
 from backend.agent.optimizer import LLMService, SQLOptimizer
-from backend.api.routes import backups, capacity, chat, metrics, optimizations, queries
+from backend.api.routes import alerts, backups, capacity, chat, metrics, optimizations, queries
 from backend.services.approval import ApprovalService
 from backend.services.backup import BackupVerificationService
 from backend.services.forecasting import CapacityForecaster
@@ -163,6 +163,7 @@ def create_app() -> FastAPI:
     app.include_router(capacity.router, prefix="/api/v1/capacity", tags=["Capacity"])
     app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
     app.include_router(backups.router, prefix="/api/v1/backups", tags=["Backups"])
+    app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["Alerts"])
 
     # SSE endpoint for real-time dashboard streaming
     @app.get("/api/v1/stream/{database_id}", tags=["SSE"])

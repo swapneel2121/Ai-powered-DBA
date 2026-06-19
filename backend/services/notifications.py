@@ -43,13 +43,27 @@ class NotificationService:
     def __init__(self):
         self._http = httpx.AsyncClient(timeout=10.0)
         self._email_queue: List[Dict] = []
+        # In-memory ring buffer of recent alerts so the dashboard/API can show
+        # "active alerts" without a dedicated alerts table.
+        self._recent_alerts: List[Dict] = []
 
     # ── Alerts ────────────────────────────────
+
+    def recent_alerts(self, limit: int = 50) -> List[Dict]:
+        """Return the most recent alerts (newest first)."""
+        return list(reversed(self._recent_alerts))[:limit]
 
     async def send_alert(self, anomaly: Any):
         """Route an anomaly event to the appropriate notification channel."""
         severity = anomaly.severity
         payload = self._build_alert_slack_payload(anomaly)
+
+        # Record for the dashboard/API (capped).
+        try:
+            self._recent_alerts.append(anomaly.to_dict())
+            del self._recent_alerts[:-200]
+        except Exception:  # noqa: BLE001
+            pass
 
         if severity in ("p1", "critical"):
             await self._slack(payload)

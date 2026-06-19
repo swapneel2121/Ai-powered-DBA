@@ -78,7 +78,12 @@ services:
       TIMESCALE_URL: postgresql://postgres:password@timescaledb:5432/dba_metrics
       REDIS_URL: redis://redis:6379/0
       OLLAMA_BASE_URL: http://ollama:11434
-      # Low threshold so the bundled sample workload (full scans over 100k rows)
+      OLLAMA_MODEL: llama3.2:1b
+      # Hard-wire the bundled sample DB so monitoring works regardless of the
+      # root .env (which can get reset to the localhost/mydb example default).
+      # This compose value overrides any MONITORED_DBS from env_file/.env.
+      MONITORED_DBS: postgresql://dba_agent:password@sample-postgres:5432/sampledb
+      # Low threshold so the bundled sample workload (full scans over 1M rows)
       # registers in the Slow Queries tab. Raise for real production databases.
       SLOW_QUERY_THRESHOLD_MS: "1"
     ports:
@@ -169,15 +174,27 @@ services:
       POSTGRES_USER: dba_agent
       POSTGRES_PASSWORD: password
       POSTGRES_DB: sampledb
+      # Dataset size (rows). Defaults (~2.6M rows) load in under a minute so the
+      # database accepts connections quickly and the dashboard populates fast.
+      # The seed runs synchronously at first init and blocks connections until it
+      # finishes, so very large values delay startup. Scale toward the document's
+      # 100M+ figure as your machine/patience allows (e.g. SEED_ORDERS=100000000).
+      SEED_USERS: "100000"
+      SEED_ORDERS: "1000000"
+      SEED_ORDER_ITEMS: "1500000"
     ports:
       - "5432:5432"
     volumes:
       - sample_pg_data:/var/lib/postgresql/data
-      - ./sample_pg_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./sample_pg_seed.sh:/docker-entrypoint-initdb.d/init.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U dba_agent -d sampledb"]
-      interval: 10s
-      retries: 5
+      # Generous start period so the large initial seed can finish before the
+      # container is judged unhealthy.
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 600s
 
 volumes:
   timescale_data:

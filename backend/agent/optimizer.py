@@ -111,6 +111,26 @@ Provide a data-backed analysis. Respond with JSON:
   "confidence": 0.75
 }}"""
 
+DATA_QUERY_PROMPT = """You translate an English question into ONE read-only SQL query
+for a {db_type} database, so the user can fetch data.
+
+DATABASE SCHEMA (tables and their columns):
+{schema}
+
+RULES:
+1. Output exactly ONE SELECT statement. Never INSERT, UPDATE, DELETE, or any DDL.
+2. Use only the tables and columns shown in the schema above.
+3. Always include a LIMIT of 100 or fewer.
+4. Use valid {db_type} syntax.
+
+QUESTION: {question}
+
+Respond with JSON:
+{{
+  "sql": "SELECT ... LIMIT 100",
+  "explanation": "one short sentence describing what the query returns"
+}}"""
+
 
 # ─────────────────────────────────────────────
 # LLM Client
@@ -308,6 +328,29 @@ class SQLOptimizer:
         sql = parsed.get("sql")
         explanation = parsed.get("explanation", "")
         return explanation, sql
+
+    async def english_to_sql(
+        self, question: str, schema: str, db_type: str = "postgresql"
+    ) -> Tuple[Optional[str], str]:
+        """
+        Translate an English question into a single read-only SQL query against
+        the *monitored* database, grounded in its real schema. Returns
+        (sql_or_None, explanation). Returns (None, ...) if the LLM is unavailable.
+        """
+        prompt = DATA_QUERY_PROMPT.format(
+            db_type=db_type,
+            schema=schema or "(schema unavailable)",
+            question=question,
+        )
+        try:
+            raw = await self.llm.complete(prompt)
+            parsed = self._parse_json_response(raw)
+        except Exception as e:  # noqa: BLE001
+            log.warning("llm_english_to_sql_failed", error=str(e)[:200])
+            return None, "llm_unavailable"
+        sql = (parsed.get("sql") or "").strip() or None
+        explanation = parsed.get("explanation", "")
+        return sql, explanation
 
     # ── Validation ────────────────────────────
 

@@ -945,10 +945,16 @@ function CapacityView({ dbId }: { dbId: string }) {
 // AI Chat View
 // ─────────────────────────────────────────────
 
+type ChatMsg = {
+  role: string;
+  content: string;
+  rows?: Array<Record<string, unknown>>;
+  columns?: string[];
+  sql?: string;
+};
+
 function ChatView({ dbId }: { dbId: string }) {
-  const [messages, setMessages] = useState<
-    Array<{ role: string; content: string }>
-  >([]);
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -976,9 +982,17 @@ function ChatView({ dbId }: { dbId: string }) {
 
     try {
       const resp = await api.chat(dbId, newMessages);
+      const rows = (resp.chart_data?.rows as Array<Record<string, unknown>>) ?? undefined;
+      const columns = (resp.chart_data?.columns as string[]) ?? undefined;
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: resp.answer },
+        {
+          role: "assistant",
+          content: resp.answer,
+          rows,
+          columns,
+          sql: resp.sql_executed ?? undefined,
+        },
       ]);
     } catch (e) {
       setMessages((prev) => [
@@ -1022,13 +1036,54 @@ function ChatView({ dbId }: { dbId: string }) {
             className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-2xl rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
+              className={`max-w-3xl rounded-xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
                 m.role === "user"
                   ? "bg-blue-600 text-white rounded-br-sm"
                   : "bg-gray-800 text-gray-200 rounded-bl-sm border border-gray-700"
               }`}
             >
               {m.content}
+
+              {m.sql && (
+                <pre className="mt-2 bg-gray-950 border border-gray-700 rounded-lg p-2 text-xs text-green-400 overflow-x-auto whitespace-pre-wrap">
+                  {m.sql}
+                </pre>
+              )}
+
+              {m.rows && m.rows.length > 0 && m.columns && (
+                <div className="mt-2 overflow-x-auto max-h-72 border border-gray-700 rounded-lg">
+                  <table className="text-xs w-full">
+                    <thead className="bg-gray-900 sticky top-0">
+                      <tr>
+                        {m.columns.map((c) => (
+                          <th
+                            key={c}
+                            className="text-left font-semibold text-gray-400 px-2 py-1.5 border-b border-gray-700 whitespace-nowrap"
+                          >
+                            {c}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {m.rows.slice(0, 100).map((row, ri) => (
+                        <tr key={ri} className="odd:bg-gray-900/40">
+                          {m.columns!.map((c) => (
+                            <td
+                              key={c}
+                              className="px-2 py-1 border-b border-gray-800 text-gray-300 whitespace-nowrap"
+                            >
+                              {row[c] === null || row[c] === undefined
+                                ? "—"
+                                : String(row[c])}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         ))}

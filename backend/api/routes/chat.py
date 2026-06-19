@@ -109,6 +109,31 @@ async def _answer_from_data(
             f"transactions or contention on a hot row."
         )
 
+    # ── Alerts / security ────────────────────────────────────────
+    if any(w in q for w in ("alert", "security", "injection", "anomal", "suspicious")):
+        security_only = any(
+            w in q for w in ("security", "injection", "suspicious")
+        )
+        alerts = state.notifier.recent_alerts(50)
+        if security_only:
+            alerts = [
+                a
+                for a in alerts
+                if str(a.get("anomaly_type", "")).startswith(
+                    ("sql_injection", "privilege_escalation", "sensitive_table")
+                )
+            ]
+        if not alerts:
+            kind = "security " if security_only else ""
+            return f"No {kind}alerts have fired recently. The agent is monitoring continuously."
+        lines = [f"{len(alerts)} recent alert(s):\n"]
+        for a in alerts[:10]:
+            lines.append(
+                f"• [{str(a.get('severity', '')).upper()}] {a.get('title', '')}"
+                f" — {a.get('anomaly_type', '')}"
+            )
+        return "\n".join(lines)
+
     # ── Health summary ───────────────────────────────────────────
     if any(w in q for w in ("health", "summary", "status", "how is", "overview")):
         if not snap:
@@ -147,24 +172,97 @@ async def chat(req: ChatRequest):
             suggested_questions=SUGGESTED_QUESTIONS,
         )
 
-    # 2) Otherwise defer to the LLM (which itself degrades gracefully if offline).
-    answer, sql = await state.optimizer.answer_nl_question(
-        question=last_message,
-        database_id=req.database_id,
-        db_stats=snap,
+    # 2) Free-form question → translate to SQL against the MONITORED database
+    #    and fetch real data. Requires an LLM (Ollama/Groq).
+    collector = getattr(state.agent, "_collectors", {}).get(req.database_id)
+    if collector is None or not hasattr(collector, "run_readonly_query"):
+        return ChatResponse(answer=_no_db_message(), suggested_questions=SUGGESTED_QUESTIONS)
+
+    try:
+        schema = await collector.get_schema_summary()
+    except Exception:  # noqa: BLE001
+        schema = ""
+
+    sql, explanation = await state.optimizer.english_to_sql(
+        question=last_message, schema=schema, db_type="postgresql"
     )
+    if not sql:
+        return ChatResponse(answer=_llm_off_message(), suggested_questions=SUGGESTED_QUESTIONS)
 
-    chart_data = None
-    if sql:
-        try:
-            rows = await state.metric_store.execute_monitoring_query(sql)
-            chart_data = {"rows": rows[:500]}
-        except Exception as e:  # noqa: BLE001
-            answer += f"\n\n(Note: Could not execute generated SQL: {e})"
+    safe_sql = _safe_select(sql)
+    if safe_sql is None:
+        return ChatResponse(
+            answer=(
+                "I could only generate a query that isn't a safe read-only SELECT, "
+                "so I won't run it. Try rephrasing your question."
+            ),
+            sql_executed=sql,
+            suggested_questions=SUGGESTED_QUESTIONS,
+        )
 
+    try:
+        rows = await collector.run_readonly_query(safe_sql, limit=100)
+    except Exception as e:  # noqa: BLE001
+        return ChatResponse(
+            answer=f"I generated a query but it failed to run: {str(e)[:300]}",
+            sql_executed=safe_sql,
+            suggested_questions=SUGGESTED_QUESTIONS,
+        )
+
+    columns = list(rows[0].keys()) if rows else []
+    answer = (f"{explanation}\n\n" if explanation else "") + (
+        f"Returned {len(rows)} row(s)." if rows else "The query returned no rows."
+    )
     return ChatResponse(
         answer=answer,
-        sql_executed=sql,
-        chart_data=chart_data,
+        sql_executed=safe_sql,
+        chart_data={"rows": rows, "columns": columns},
         suggested_questions=SUGGESTED_QUESTIONS,
+    )
+
+
+# Statements that must never appear in a generated data query.
+_FORBIDDEN_SQL = re.compile(
+    r"\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|copy|merge|"
+    r"vacuum|reindex|call)\b",
+    re.I,
+)
+
+
+def _safe_select(sql: str) -> Optional[str]:
+    """
+    Validate that `sql` is a single read-only SELECT and enforce a LIMIT.
+    Returns the (possibly LIMIT-augmented) SQL, or None if it isn't safe.
+    The read-only transaction at execution time is the real guard; this is
+    defense-in-depth and gives a clean rejection before running anything.
+    """
+    s = sql.strip().rstrip(";").strip()
+    if not s or ";" in s:  # reject empty or multiple statements
+        return None
+    low = s.lower()
+    if not (low.startswith("select") or low.startswith("with")):
+        return None
+    if _FORBIDDEN_SQL.search(s):
+        return None
+    if not re.search(r"\blimit\s+\d+", low):
+        s += " LIMIT 100"
+    return s
+
+
+def _no_db_message() -> str:
+    return (
+        "I can't reach the monitored database right now, so I can't run a data "
+        "query. Once the agent is connected, ask things like \"show 10 orders with "
+        "status pending\" or \"count orders per status\"."
+    )
+
+
+def _llm_off_message() -> str:
+    return (
+        "Free-form data queries need a language model, which isn't reachable right "
+        "now. Enable one locally:\n"
+        "docker exec -it dba-ollama ollama pull llama3.2:1b\n"
+        "then set OLLAMA_MODEL=llama3.2:1b in the backend service and restart it.\n\n"
+        "Meanwhile I can still answer health questions with no model — try "
+        "\"top 5 slowest queries\" or \"give me a health summary\"."
     )
